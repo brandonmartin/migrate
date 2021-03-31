@@ -240,7 +240,10 @@ func (c *CockroachDb) SetVersion(version int, dirty bool) error {
 			return err
 		}
 
-		if version >= 0 {
+		// Also re-write the schema version for nil dirty versions to prevent
+		// empty schema version for failed down migration on the first migration
+		// See: https://github.com/golang-migrate/migrate/issues/330
+		if version >= 0 || (version == database.NilVersion && dirty) {
 			if _, err := tx.Exec(`INSERT INTO "`+c.config.MigrationsTable+`" (version, dirty) VALUES ($1, $2)`, version, dirty); err != nil {
 				return err
 			}
@@ -296,6 +299,9 @@ func (c *CockroachDb) Drop() (err error) {
 		if len(tableName) > 0 {
 			tableNames = append(tableNames, tableName)
 		}
+	}
+	if err := tables.Err(); err != nil {
+		return &database.Error{OrigErr: err, Query: []byte(query)}
 	}
 
 	if len(tableNames) > 0 {

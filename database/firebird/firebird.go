@@ -134,9 +134,9 @@ func (f *Firebird) Run(migration io.Reader) error {
 }
 
 func (f *Firebird) SetVersion(version int, dirty bool) error {
-	if version < 0 {
-		return nil
-	}
+	// Always re-write the schema version to prevent empty schema version
+	// for failed down migration on the first migration
+	// See: https://github.com/golang-migrate/migrate/issues/330
 
 	// TODO: parameterize this SQL statement
 	//       https://firebirdsql.org/refdocs/langrefupd20-execblock.html
@@ -192,6 +192,9 @@ func (f *Firebird) Drop() (err error) {
 		if len(tableName) > 0 {
 			tableNames = append(tableNames, tableName)
 		}
+	}
+	if err := tables.Err(); err != nil {
+		return &database.Error{OrigErr: err, Query: []byte(query)}
 	}
 
 	// delete one by one ...

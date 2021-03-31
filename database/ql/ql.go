@@ -136,6 +136,7 @@ func (m *Ql) Drop() (err error) {
 			err = multierror.Append(err, errClose)
 		}
 	}()
+
 	tableNames := make([]string, 0)
 	for tables.Next() {
 		var tableName string
@@ -148,6 +149,10 @@ func (m *Ql) Drop() (err error) {
 			}
 		}
 	}
+	if err := tables.Err(); err != nil {
+		return &database.Error{OrigErr: err, Query: []byte(query)}
+	}
+
 	if len(tableNames) > 0 {
 		for _, t := range tableNames {
 			query := "DROP TABLE " + t
@@ -210,7 +215,10 @@ func (m *Ql) SetVersion(version int, dirty bool) error {
 		return &database.Error{OrigErr: err, Query: []byte(query)}
 	}
 
-	if version >= 0 {
+	// Also re-write the schema version for nil dirty versions to prevent
+	// empty schema version for failed down migration on the first migration
+	// See: https://github.com/golang-migrate/migrate/issues/330
+	if version >= 0 || (version == database.NilVersion && dirty) {
 		query := fmt.Sprintf(`INSERT INTO %s (version, dirty) VALUES (uint64(?1), ?2)`,
 			m.config.MigrationsTable)
 		if _, err := tx.Exec(query, version, dirty); err != nil {
